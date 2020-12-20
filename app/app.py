@@ -4,4 +4,4 @@ from .images import Resource
 
 api = application = falcon.API()
 
-api.add_route('/images', Resource())
+api.add_route('/images', Resource(storage_path='storage'))
