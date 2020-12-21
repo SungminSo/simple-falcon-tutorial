@@ -39,15 +39,18 @@ class ImageStore:
         name = f'{self._uuidgen()}{ext}'
         image_path = os.path.join(self._storage_path, name)
 
-        with self._fopen(image_path, 'wb') as image_file:
-            while True:
-                # By default Falcon does not spool or decode request data,
-                # instead giving you direct access to the incoming binary stream provide by the WSGI server.
-                chunk = image_stream.read(self._CHUNK_SIZE_BYTES)
-                if not chunk:
-                    break
+        try:
+            with self._fopen(image_path, 'wb') as image_file:
+                while True:
+                    # By default Falcon does not spool or decode request data,
+                    # instead giving you direct access to the incoming binary stream provide by the WSGI server.
+                    chunk = image_stream.read(self._CHUNK_SIZE_BYTES)
+                    if not chunk:
+                        break
 
-                image_file.write(chunk)
+                    image_file.write(chunk)
+        except IOError:
+            raise IOError('internal error in ImageStore.save')
 
         return name
 
@@ -85,7 +88,11 @@ class Collection:
 
     @falcon.before(validate_image_type)
     def on_post(self, req: falcon.Request, resp: falcon.Response):
-        name = self._image_store.save(req.stream, req.content_type)
+        try:
+            name = self._image_store.save(req.stream, req.content_type)
+        except IOError:
+            raise falcon.HTTPInternalServerError
+
         resp.status = falcon.HTTP_CREATED
         resp.location = '/images/' + name
 
@@ -96,4 +103,9 @@ class Item:
 
     def on_get(self, req: falcon.Request, resp: falcon.Response, name: str):
         resp.content_type = mimetypes.guess_type(name)[0]
-        resp.stream, resp.content_length = self._image_store.open(name)
+
+        try:
+            resp.stream, resp.content_length = self._image_store.open(name)
+        except IOError:
+            # Normally you would also log the error.
+            raise falcon.HTTPNotFound()
