@@ -1,14 +1,14 @@
 import os
 import falcon
 
-from .images import Resource, ImageStore
+from .images import ImageStore, Collection, Item
 
 
-def create_app(image_store: str) -> falcon.API:
+def create_app(image_store: ImageStore) -> falcon.API:
     api = falcon.API()
 
-    api.add_route('/images', Resource(image_store=image_store))
-
+    api.add_route('/images', Collection(image_store=image_store))
+    api.add_route('/images/{name}', Item(image_store=image_store))
     return api
 
 

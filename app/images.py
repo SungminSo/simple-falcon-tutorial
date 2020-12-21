@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import uuid
 import mimetypes
 
@@ -9,8 +10,10 @@ import msgpack
 
 
 class ImageStore:
-
     _CHUNK_SIZE_BYTES = 4096
+    _IMAGE_NAME_PATTERN = re.compile(
+        '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}.[a-z]{2,4}$'
+    )
 
     # Note the use of dependency injection for standard library methods.
     # We'll use these later to avoid monkey-patching.
@@ -36,15 +39,26 @@ class ImageStore:
 
         return name
 
+    def open(self, name):
+        # Always validate untrusted input!
+        if not self._IMAGE_NAME_PATTERN.match(name):
+            raise IOError('file not found')
 
-class Resource:
+        image_path = os.path.join(self._storage_path, name)
+        stream = self._fopen(image_path, 'rb')
+        content_length = os.path.getsize(image_path)
 
-    # The resource object must now be initialized with a path used during POST
+        return stream, content_length
+
+
+class Collection:
     def __init__(self, image_store: ImageStore):
         self._image_store = image_store
 
     # If do '@staticmethod' -> "TypeError: on_get() missing 1 required positional argument: 'resp'"
     def on_get(self, req: falcon.Request, resp: falcon.Response):
+        # TODO: Modify this to return a list of href's based on
+        # what images are actually available.
         doc = {
             'images': [
                 {
@@ -53,11 +67,6 @@ class Resource:
             ]
         }
 
-        # Create a JSON representation of the resource
-        # resp.body = json.dumps(doc, ensure_ascii=False)
-
-        # Using msgpack-python
-        # a small performance gain by assigning directly to resp.data
         resp.data = msgpack.packb(doc, use_bin_type=True)
         resp.content_type = falcon.MEDIA_MSGPACK
         resp.status = falcon.HTTP_OK
@@ -66,3 +75,12 @@ class Resource:
         name = self._image_store.save(req.stream, req.content_type)
         resp.status = falcon.HTTP_CREATED
         resp.location = '/images/' + name
+
+
+class Item:
+    def __init__(self, image_store: ImageStore):
+        self._image_store = image_store
+
+    def on_get(self, req, resp, name):
+        resp.content_type = mimetypes.guess_type(name)[0]
+        resp.stream, resp.content_length = self._image_store.open(name)
