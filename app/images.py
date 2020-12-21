@@ -8,6 +8,18 @@ import falcon
 # import json
 import msgpack
 
+ALLOWED_IMAGE_TYPES = (
+    'image/git',
+    'image/jpeg',
+    'image/png',
+)
+
+
+def validate_image_type(req: falcon.Request, resp: falcon.Response, resource, params):
+    if req.content_type not in ALLOWED_IMAGE_TYPES:
+        msg = 'Image type not allowed. Must be PNG, JPEG, or GIF'
+        raise falcon.HTTPBadRequest('Bad request', msg)
+
 
 class ImageStore:
     _CHUNK_SIZE_BYTES = 4096
@@ -39,7 +51,7 @@ class ImageStore:
 
         return name
 
-    def open(self, name):
+    def open(self, name: str):
         # Always validate untrusted input!
         if not self._IMAGE_NAME_PATTERN.match(name):
             raise IOError('file not found')
@@ -71,6 +83,7 @@ class Collection:
         resp.content_type = falcon.MEDIA_MSGPACK
         resp.status = falcon.HTTP_OK
 
+    @falcon.before(validate_image_type)
     def on_post(self, req: falcon.Request, resp: falcon.Response):
         name = self._image_store.save(req.stream, req.content_type)
         resp.status = falcon.HTTP_CREATED
@@ -81,6 +94,6 @@ class Item:
     def __init__(self, image_store: ImageStore):
         self._image_store = image_store
 
-    def on_get(self, req, resp, name):
+    def on_get(self, req: falcon.Request, resp: falcon.Response, name: str):
         resp.content_type = mimetypes.guess_type(name)[0]
         resp.stream, resp.content_length = self._image_store.open(name)
